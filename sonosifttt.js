@@ -10,6 +10,9 @@ var SonosDiscovery = require('sonos-discovery');
 var discovery = new SonosDiscovery();
 var tts = require('node-tts-api');
 
+var username = 'CHANGE'; // change to your username
+var password = 'CHANGE'; // change to your password
+
 var app = express();
 
 var queueSave = {};
@@ -42,74 +45,77 @@ discovery.on('transport-state', function(data) {
 });
 
 app.post('/xmlrpc.php', ifttt, function(req, res) {
-
-    var players = [];
-    var playerUUIDs = [];
-    // Get all of the players mentioned in this command
-    for (var i = 0; i < req.body.mt_keywords.length; i++) {
-        var player = discovery.getPlayer(req.body.mt_keywords[i]);
-        if (!player) continue;
-        var playerInfo = player.convertToSimple();
-        if (playerInfo.uuid != playerInfo.coordinator) {
-            player = discovery.getPlayerByUUID(playerInfo.coordinator);
+    if(req.body.username == username && req.body.password == password) {
+        var players = [];
+        var playerUUIDs = [];
+        // Get all of the players mentioned in this command
+        for (var i = 0; i < req.body.mt_keywords.length; i++) {
+            var player = discovery.getPlayer(req.body.mt_keywords[i]);
             if (!player) continue;
+            var playerInfo = player.convertToSimple();
+            if (playerInfo.uuid != playerInfo.coordinator) {
+                player = discovery.getPlayerByUUID(playerInfo.coordinator);
+                if (!player) continue;
+            }
+            if (playerUUIDs.indexOf(player.uuid) == -1) {
+                playerUUIDs.push(player.uuid);
+                players.push(player);
+            }
         }
-        if (playerUUIDs.indexOf(player.uuid) == -1) {
-            playerUUIDs.push(player.uuid);
-            players.push(player);
-        }
-    }
 
-    if (req.body.title.toLowerCase() === 'play') {
-        for (var i = 0; i < players.length; i++) {
-            var player = players[i];
-            player.play();
+        if (req.body.title.toLowerCase() === 'play') {
+            for (var i = 0; i < players.length; i++) {
+                var player = players[i];
+                player.play();
+            }
         }
-    }
-    if (req.body.title.toLowerCase() === 'pause') {
-        for (var i = 0; i < players.length; i++) {
-            var player = players[i];
-            player.pause();
+        if (req.body.title.toLowerCase() === 'pause') {
+            for (var i = 0; i < players.length; i++) {
+                var player = players[i];
+                player.pause();
+            }
         }
-    }
-    if (req.body.title.toLowerCase() === 'favorite') {
-        for (var i = 0; i < players.length; i++) {
-            var player = players[i];
-            if (player.state.currentState === 'PLAYING') continue;
-            player.replaceWithFavorite(req.body.description, function(success) {
-                if (success)
-                    player.play();
-                else {
-                    console.log('didnt find it');
-                }
-            });
-        }
-    }
-    // Say text, using the tts-api service
-    if (req.body.title.toLowerCase() === 'say') {
-        var textURL;
-        tts.getSpeech(req.body.description, function(error, link) {
-            if (error) return;
-            textURL = link;
+        if (req.body.title.toLowerCase() === 'favorite') {
             for (var i = 0; i < players.length; i++) {
                 var player = players[i];
                 if (player.state.currentState === 'PLAYING') continue;
-                var favURI = player.avTransportUri;
-                var favTrack = favTrack = player.state.trackNo;
-                player.setAVTransportURI(textURL, '', function(success) {
-                    player.play(function() {
-                        queueSave[player.uuid] = {
-                            favTrack: favTrack,
-                            favURI: favURI,
-                            started: false
-                        };
-                    });
+                player.replaceWithFavorite(req.body.description, function(success) {
+                    if (success)
+                        player.play();
+                    else {
+                        console.log('didnt find it');
+                    }
                 });
             }
-        });
+        }
+        // Say text, using the tts-api service
+        if (req.body.title.toLowerCase() === 'say') {
+            var textURL;
+            tts.getSpeech(req.body.description, function(error, link) {
+                if (error) return;
+                textURL = link;
+                for (var i = 0; i < players.length; i++) {
+                    var player = players[i];
+                    if (player.state.currentState === 'PLAYING') continue;
+                    var favURI = player.avTransportUri;
+                    var favTrack = favTrack = player.state.trackNo;
+                    player.setAVTransportURI(textURL, '', function(success) {
+                        player.play(function() {
+                            queueSave[player.uuid] = {
+                                favTrack: favTrack,
+                                favURI: favURI,
+                                started: false
+                            };
+                        });
+                    });
+                }
+            });
 
+        }
+        res.send(200);
+    } else {
+        res.send(401);
     }
-    res.send(200);
 });
 
 app.listen(3000);
